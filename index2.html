@@ -163,7 +163,27 @@
   .msgRow.other .bubble{background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px;}
   .metaRow{font-size:10.5px;color:var(--muted);margin-top:3px;padding:0 3px;display:flex;gap:6px;align-items:center;}
   .metaRow .readTag{color:var(--moss-dark);font-weight:600;}
+  .metaRow .actionBtn{cursor:pointer;text-decoration:underline;}
   .senderTag{font-size:11px;color:var(--muted);margin:12px 0 3px 3px;display:flex;align-items:center;gap:5px;}
+  .quoteBlock{
+    font-size:11px;color:var(--muted);background:rgba(0,0,0,0.05);
+    border-left:3px solid var(--moss);padding:4px 8px;border-radius:6px;
+    margin-bottom:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .quoteBlock b{color:var(--moss-dark);}
+
+  #replyPreview{
+    display:none;align-items:center;justify-content:space-between;
+    background:var(--paper);border-top:1px solid var(--line);
+    padding:8px 16px;flex-shrink:0;
+  }
+  #replyPreview.show{display:flex;}
+  #replyPreview .rpText{
+    font-size:12px;color:var(--text);border-left:3px solid var(--moss);
+    padding-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:85%;
+  }
+  #replyPreview .rpWho{font-weight:700;color:var(--moss-dark);}
+  #rpCancel{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;}
 
   #composer{
     border-top:1px solid var(--line);
@@ -317,6 +337,10 @@
   <div id="layout">
     <div id="chatPane">
       <div id="messages"></div>
+      <div id="replyPreview">
+        <div class="rpText"><span class="rpWho"></span>: <span class="rpSnippet"></span></div>
+        <button id="rpCancel" type="button">✕</button>
+      </div>
       <div id="composer">
         <button id="emojiBtn" type="button">🙂</button>
         <button id="photoBtn" type="button" title="사진 보내기">📷</button>
@@ -431,6 +455,7 @@ function iconHtml(c, px){
 }
 
 let currentUser = null;
+let replyTarget = null;
 let pollTimer = null;
 let pendingUser = null;
 let authMode = null; // "set" | "enter"
@@ -663,7 +688,8 @@ async function loadMessages(){
     if(error) throw error;
     messages = (data || []).map(row => ({
       id: row.id, sender: row.sender, type: row.type,
-      text: row.text, imgKey: row.img_key, ts: Number(row.ts)
+      text: row.text, imgKey: row.img_key, ts: Number(row.ts),
+      replyToId: row.reply_to_id, replyToSender: row.reply_to_sender, replyToSnippet: row.reply_to_snippet
     }));
   }catch(e){ console.error("메시지 불러오기 실패", e); messages = []; }
 }
@@ -785,21 +811,43 @@ function compressImage(file){
   });
 }
 
+function snippetOf(m){
+  return m.type === "image" ? "[사진]" : (m.text.length > 40 ? m.text.slice(0,40) + "…" : m.text);
+}
+
+function setReplyTarget(m){
+  replyTarget = m;
+  const preview = document.getElementById("replyPreview");
+  preview.querySelector(".rpWho").textContent = m.sender;
+  preview.querySelector(".rpSnippet").textContent = snippetOf(m);
+  preview.classList.add("show");
+  document.getElementById("msgInput").focus();
+}
+function clearReplyTarget(){
+  replyTarget = null;
+  document.getElementById("replyPreview").classList.remove("show");
+}
+document.getElementById("rpCancel").addEventListener("click", clearReplyTarget);
+
 async function sendImageMessage(dataUrl){
   const imgKey = "img-" + Date.now() + "-" + Math.random().toString(36).slice(2,7);
   const { error: imgErr } = await sb.from("images").insert({ key: imgKey, data: dataUrl });
   if(imgErr) throw new Error("이미지 저장 실패");
   imageCache[imgKey] = dataUrl;
 
+  const rt = replyTarget;
   const msg = {
     id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
-    sender: currentUser, type: "image", imgKey: imgKey, ts: Date.now()
+    sender: currentUser, type: "image", imgKey: imgKey, ts: Date.now(),
+    replyToId: rt ? rt.id : null, replyToSender: rt ? rt.sender : null, replyToSnippet: rt ? snippetOf(rt) : null
   };
   const { error } = await sb.from("messages").insert({
-    id: msg.id, sender: msg.sender, type: "image", img_key: imgKey, ts: msg.ts
+    id: msg.id, sender: msg.sender, type: "image", img_key: imgKey, ts: msg.ts,
+    reply_to_id: msg.replyToId, reply_to_sender: msg.replyToSender, reply_to_snippet: msg.replyToSnippet
   });
   if(error){ console.error("메시지 저장 실패", error); return; }
   messages.push(msg);
+  clearReplyTarget();
   renderMessages();
   markRead();
 }
@@ -823,17 +871,21 @@ async function sendMessage(){
   const input = document.getElementById("msgInput");
   const text = input.value.trim();
   if(!text) return;
+  const rt = replyTarget;
   const msg = {
     id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
-    sender: currentUser, type: "text", text: text, ts: Date.now()
+    sender: currentUser, type: "text", text: text, ts: Date.now(),
+    replyToId: rt ? rt.id : null, replyToSender: rt ? rt.sender : null, replyToSnippet: rt ? snippetOf(rt) : null
   };
   const { error } = await sb.from("messages").insert({
-    id: msg.id, sender: msg.sender, type: "text", text: msg.text, ts: msg.ts
+    id: msg.id, sender: msg.sender, type: "text", text: msg.text, ts: msg.ts,
+    reply_to_id: msg.replyToId, reply_to_sender: msg.replyToSender, reply_to_snippet: msg.replyToSnippet
   });
   if(error){ console.error("메시지 저장 실패", error); return; }
   messages.push(msg);
   input.value = "";
   input.style.height = "auto";
+  clearReplyTarget();
   renderMessages();
   markRead();
 }
@@ -874,6 +926,13 @@ function renderMessages(){
     row.dataset.ts = m.ts;
     row.dataset.mine = m.sender === currentUser ? "1" : "0";
 
+    if(m.replyToSnippet){
+      const quote = document.createElement("div");
+      quote.className = "quoteBlock";
+      quote.innerHTML = "<b>" + esc(m.replyToSender || "") + "</b>: " + esc(m.replyToSnippet);
+      row.appendChild(quote);
+    }
+
     const bubble = document.createElement("div");
     bubble.className = "bubble";
     if(m.type === "image"){
@@ -903,19 +962,24 @@ function renderMessages(){
     meta.className = "metaRow";
     const time = new Date(m.ts);
     let metaHtml = time.getHours().toString().padStart(2,"0") + ":" + time.getMinutes().toString().padStart(2,"0");
+    const replyBtn = document.createElement("span");
+    replyBtn.className = "actionBtn";
+    replyBtn.textContent = "답장";
+    replyBtn.onclick = () => setReplyTarget(m);
     if(m.sender === currentUser){
       const readTag = document.createElement("span");
       readTag.className = "readTag";
       meta.textContent = metaHtml;
       meta.appendChild(readTag);
+      meta.appendChild(replyBtn);
       const delBtn = document.createElement("span");
+      delBtn.className = "actionBtn";
       delBtn.textContent = "삭제";
-      delBtn.style.cursor = "pointer";
-      delBtn.style.textDecoration = "underline";
       delBtn.onclick = () => deleteMessage(m.id);
       meta.appendChild(delBtn);
     } else {
       meta.textContent = metaHtml;
+      meta.appendChild(replyBtn);
     }
     row.appendChild(meta);
     box.appendChild(row);
