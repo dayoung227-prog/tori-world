@@ -714,13 +714,35 @@ async function loadReads(){
 }
 
 /* ---------------- 폴링(주기적 새로고침) ---------------- */
+/* ---------------- 탭 제목 깜빡임 (창을 안 보고 있을 때 새 메시지 알림) ---------------- */
+const originalTitle = document.title;
+let titleFlashTimer = null;
+
+function startTitleFlash(){
+  if(titleFlashTimer) return;
+  let toggle = false;
+  titleFlashTimer = setInterval(() => {
+    document.title = toggle ? originalTitle : "💬 새 메시지!";
+    toggle = !toggle;
+  }, 1000);
+}
+function stopTitleFlash(){
+  if(titleFlashTimer){ clearInterval(titleFlashTimer); titleFlashTimer = null; }
+  document.title = originalTitle;
+}
+document.addEventListener("visibilitychange", () => { if(!document.hidden) stopTitleFlash(); });
+window.addEventListener("focus", stopTitleFlash);
+
 async function pollLoop(){
-  const prevCount = messages.length;
+  const prevIds = new Set(messages.map(m => m.id));
   await loadMessages();
   await loadEvents();
   await loadReads();
-  if(messages.length !== prevCount) renderMessages();
-  else updateReadTags();
+
+  const hasNewFromOther = messages.some(m => !prevIds.has(m.id) && m.sender !== currentUser);
+  if(hasNewFromOther && document.hidden) startTitleFlash();
+
+  renderMessages();
   renderCalendar();
   markRead();
 }
