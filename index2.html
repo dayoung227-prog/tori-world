@@ -127,6 +127,10 @@
   .roomTitle .dot{width:8px;height:8px;border-radius:50%;background:var(--moss);box-shadow:0 0 0 3px rgba(92,131,116,0.25);}
   .roomTitle h1{font-size:15px;margin:0;font-weight:700;letter-spacing:1px;}
   .roomTitle span{font-size:11.5px;color:#9AA6AE;display:block;margin-top:2px;}
+  .statusTag{display:inline-block !important;margin-top:0 !important;margin-left:4px;}
+  .sysMsg{
+    text-align:center;font-size:11px;color:var(--muted);margin:10px 0;
+  }
   #meLabel{
     font-size:12.5px;color:#C6D0CB;background:rgba(255,255,255,0.08);
     padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;
@@ -328,6 +332,7 @@
       <div>
         <h1>TORI WORLD</h1>
         <span id="pairLabel"></span>
+        <span id="otherStatus" class="statusTag"></span>
       </div>
     </div>
     <div id="meLabel"></div>
@@ -433,6 +438,7 @@ const CONFIG = {
     { name: "검정토끼", icon: RABBIT_ICON, color: "#2B2E33" }
   ],
   POLL_MS: 4000,
+  ONLINE_THRESHOLD_MS: 12000,  // 이 시간(ms) 동안 신호가 없으면 오프라인으로 간주
   RETENTION_DAYS: 30,   // 이 기간(일)보다 오래된 메시지/사진은 자동 삭제
   MAX_MESSAGES: 400,    // 메시지 개수가 이보다 많아지면 오래된 것부터 자동 삭제
 
@@ -455,6 +461,7 @@ function iconHtml(c, px){
 }
 
 let currentUser = null;
+let presenceMap = {};
 let replyTarget = null;
 let pollTimer = null;
 let pendingUser = null;
@@ -620,6 +627,49 @@ async function saveAuthMap(userName, hash){
 }
 
 /* ---------------- 앱 시작 ---------------- */
+async function loadPresence(){
+  try{
+    const { data, error } = await sb.from("presence").select("*");
+    if(error) throw error;
+    presenceMap = {};
+    (data || []).forEach(row => { presenceMap[row.user_name] = Number(row.last_seen); });
+  }catch(e){ console.error("접속 정보 불러오기 실패", e); }
+}
+
+function isOnline(name){
+  const ts = presenceMap[name];
+  return !!ts && (Date.now() - ts) < CONFIG.ONLINE_THRESHOLD_MS;
+}
+
+async function heartbeat(){
+  const now = Date.now();
+  presenceMap[currentUser] = now;
+  try{ await sb.from("presence").upsert({ user_name: currentUser, last_seen: now }); }
+  catch(e){ console.error("접속 정보 갱신 실패", e); }
+}
+
+function renderPresenceLabel(){
+  const el = document.getElementById("otherStatus");
+  if(!el || !currentUser) return;
+  const other = otherUser();
+  const on = isOnline(other);
+  el.textContent = on ? ("🟢 " + other + " 접속중") : ("⚪ " + other + " 자리비움");
+}
+
+async function postSystemMessage(text){
+  const msg = {
+    id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+    sender: currentUser, type: "system", text: text, ts: Date.now()
+  };
+  try{
+    const { error } = await sb.from("messages").insert({
+      id: msg.id, sender: msg.sender, type: "system", text: msg.text, ts: msg.ts
+    });
+    if(error) throw error;
+    messages.push(msg);
+  }catch(e){ console.error("시스템 메시지 저장 실패", e); }
+}
+
 async function startApp(name){
   currentUser = name;
   const c = charInfo(name);
@@ -630,20 +680,31 @@ async function startApp(name){
 
   buildEmojiPanel();
   await loadAll();
+  await loadPresence();
+  const wasOnline = isOnline(name);
+  await heartbeat();
+  if(!wasOnline) await postSystemMessage(name + "님이 들어왔습니다.");
   await pruneOldData();
   renderMessages();
   renderCalendar();
+  renderPresenceLabel();
   markRead();
 
   pollTimer = setInterval(pollLoop, CONFIG.POLL_MS);
 }
 
-function logout(){
+async function logout(){
+  if(currentUser){
+    await postSystemMessage(currentUser + "님이 대화방을 나갔습니다.");
+    try{ await sb.from("presence").upsert({ user_name: currentUser, last_seen: 0 }); }
+    catch(e){ /* 무시 */ }
+  }
   if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
   currentUser = null;
   messages = [];
   events = [];
   reads = {};
+  presenceMap = {};
   document.getElementById("app").style.display = "none";
   document.getElementById("charScreen").style.display = "flex";
   renderCharScreen();
@@ -738,12 +799,15 @@ async function pollLoop(){
   await loadMessages();
   await loadEvents();
   await loadReads();
+  await loadPresence();
+  await heartbeat();
 
-  const hasNewFromOther = messages.some(m => !prevIds.has(m.id) && m.sender !== currentUser);
+  const hasNewFromOther = messages.some(m => !prevIds.has(m.id) && m.sender !== currentUser && m.type !== "system");
   if(hasNewFromOther && document.hidden) startTitleFlash();
 
   renderMessages();
   renderCalendar();
+  renderPresenceLabel();
   markRead();
 }
 
@@ -934,6 +998,14 @@ function renderMessages(){
   box.innerHTML = "";
   let lastSender = null;
   messages.forEach(m => {
+    if(m.type === "system"){
+      const sys = document.createElement("div");
+      sys.className = "sysMsg";
+      sys.textContent = m.text;
+      box.appendChild(sys);
+      lastSender = null;
+      return;
+    }
     if(m.sender !== lastSender){
       const c = charInfo(m.sender);
       const tag = document.createElement("div");
