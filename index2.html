@@ -995,6 +995,7 @@ async function deleteMessage(id){
 
 function renderMessages(){
   const box = document.getElementById("messages");
+  const distanceFromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
   box.innerHTML = "";
   let lastSender = null;
   messages.forEach(m => {
@@ -1078,7 +1079,7 @@ function renderMessages(){
     row.appendChild(meta);
     box.appendChild(row);
   });
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = box.scrollHeight - box.clientHeight - distanceFromBottom;
   updateReadTags();
 }
 
