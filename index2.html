@@ -213,6 +213,13 @@
     font-size:11.5px;color:var(--muted);
   }
   .msgRow.other .bubble.imgLoading, .msgRow.me .bubble.imgLoading{background:var(--paper);color:var(--muted);border:1px dashed var(--line);}
+  .bubble.fileCard{
+    display:flex;align-items:center;gap:10px;cursor:pointer;min-width:180px;
+  }
+  .fileIcon{font-size:22px;flex-shrink:0;}
+  .fileInfo{overflow:hidden;}
+  .fileName{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;}
+  .fileSize{font-size:10.5px;opacity:.8;margin-top:2px;}
   #imgViewer{
     display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:999;
     align-items:center;justify-content:center;cursor:zoom-out;
@@ -350,8 +357,8 @@
       </div>
       <div id="composer">
         <button id="emojiBtn" type="button">🙂</button>
-        <button id="photoBtn" type="button" title="사진 보내기">📷</button>
-        <input type="file" id="imgInput" accept="image/*" style="display:none;">
+        <button id="photoBtn" type="button" title="파일 첨부">📎</button>
+        <input type="file" id="imgInput" style="display:none;">
         <div id="emojiPanel"></div>
         <textarea id="msgInput" rows="1" placeholder="메시지를 입력하세요..."></textarea>
         <button id="sendBtn">보내기</button>
@@ -441,6 +448,7 @@ const CONFIG = {
   ],
   POLL_MS: 4000,
   ONLINE_THRESHOLD_MS: 12000,  // 이 시간(ms) 동안 신호가 없으면 오프라인으로 간주
+  MAX_FILE_BYTES: 4 * 1024 * 1024,  // 사진 외 일반 파일 최대 크기 (4MB)
   RETENTION_DAYS: 30,   // 이 기간(일)보다 오래된 메시지/사진은 자동 삭제
   MAX_MESSAGES: 400,    // 메시지 개수가 이보다 많아지면 오래된 것부터 자동 삭제
 
@@ -745,10 +753,11 @@ async function pruneOldData(){
   catch(e){ console.error("자동 정리(메시지) 실패", e); }
 
   for(const m of toDelete){
-    if(m.type === "image" && m.imgKey){
+    if((m.type === "image" || m.type === "file") && m.imgKey){
       try{ await sb.from("images").delete().eq("key", m.imgKey); }
       catch(e){ /* 무시 */ }
       delete imageCache[m.imgKey];
+      delete fileCache[m.imgKey];
     }
   }
   const deleteSet = new Set(deleteIds);
@@ -767,6 +776,7 @@ async function loadMessages(){
     messages = (data || []).map(row => ({
       id: row.id, sender: row.sender, type: row.type,
       text: row.text, imgKey: row.img_key, ts: Number(row.ts),
+      fileName: row.file_name, fileMime: row.file_mime, fileSize: row.file_size,
       replyToId: row.reply_to_id, replyToSender: row.reply_to_sender, replyToSnippet: row.reply_to_snippet
     }));
   }catch(e){ console.error("메시지 불러오기 실패", e); messages = []; }
@@ -838,8 +848,9 @@ document.getElementById("msgInput").addEventListener("input", function(){
   this.style.height = Math.min(this.scrollHeight, 120) + "px";
 });
 
-/* ---------------- 사진 전송 ---------------- */
-const imageCache = {}; // imgKey -> dataURL (메모리 캐시, 중복 다운로드 방지)
+/* ---------------- 파일 첨부(사진 포함) ---------------- */
+const imageCache = {}; // imgKey -> dataURL (사진 미리보기용 메모리 캐시)
+const fileCache = {};  // fileKey -> dataURL (일반 파일 다운로드용 메모리 캐시)
 
 document.getElementById("photoBtn").addEventListener("click", () => {
   document.getElementById("imgInput").click();
@@ -848,22 +859,46 @@ document.getElementById("imgInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if(!file) return;
-  await handleImageFile(file);
+  await handleAttachedFile(file);
 });
 
-async function handleImageFile(file){
+function fileToDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(bytes){
+  if(bytes < 1024) return bytes + "B";
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + "KB";
+  return (bytes/1024/1024).toFixed(1) + "MB";
+}
+
+async function handleAttachedFile(file){
   const photoBtn = document.getElementById("photoBtn");
   photoBtn.disabled = true;
   photoBtn.textContent = "⏳";
   try{
-    const dataUrl = await compressImage(file);
-    await sendImageMessage(dataUrl);
+    if(file.type && file.type.startsWith("image/")){
+      const dataUrl = await compressImage(file);
+      await sendImageMessage(dataUrl);
+    } else {
+      if(file.size > CONFIG.MAX_FILE_BYTES){
+        showToast("4MB 이하 파일만 보낼 수 있어요.");
+        return;
+      }
+      const dataUrl = await fileToDataUrl(file);
+      await sendFileMessage(dataUrl, file.name, file.type || "application/octet-stream", file.size);
+    }
   }catch(err){
     console.error(err);
-    showToast("사진을 보내지 못했어요. 다른 사진으로 시도해주세요.");
+    showToast("파일을 보내지 못했어요. 다시 시도해주세요.");
   }finally{
     photoBtn.disabled = false;
-    photoBtn.textContent = "📷";
+    photoBtn.textContent = "📎";
   }
 }
 
@@ -872,14 +907,14 @@ document.getElementById("msgInput").addEventListener("paste", async (e) => {
   const items = e.clipboardData && e.clipboardData.items;
   if(!items) return;
   for(const item of items){
-    if(item.kind === "file" && item.type.startsWith("image/")){
+    if(item.kind === "file"){
       e.preventDefault();
       const file = item.getAsFile();
-      if(file) await handleImageFile(file);
+      if(file) await handleAttachedFile(file);
       return;
     }
   }
-  // 이미지가 아니면(일반 텍스트 붙여넣기) 기본 동작 그대로 둠
+  // 파일이 아니면(일반 텍스트 붙여넣기) 기본 동작 그대로 둠
 });
 
 function compressImage(file){
@@ -915,7 +950,9 @@ function compressImage(file){
 }
 
 function snippetOf(m){
-  return m.type === "image" ? "[사진]" : (m.text.length > 40 ? m.text.slice(0,40) + "…" : m.text);
+  if(m.type === "image") return "[사진]";
+  if(m.type === "file") return "[파일] " + (m.fileName || "");
+  return m.text.length > 40 ? m.text.slice(0,40) + "…" : m.text;
 }
 
 function setReplyTarget(m){
@@ -966,6 +1003,52 @@ async function fetchImageAndRerender(imgKey){
   }
 }
 
+async function sendFileMessage(dataUrl, name, mime, size){
+  const fileKey = "file-" + Date.now() + "-" + Math.random().toString(36).slice(2,7);
+  const { error: fErr } = await sb.from("images").insert({ key: fileKey, data: dataUrl, name: name, mime: mime, size: size });
+  if(fErr) throw new Error("파일 저장 실패");
+  fileCache[fileKey] = dataUrl;
+
+  const rt = replyTarget;
+  const msg = {
+    id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+    sender: currentUser, type: "file", imgKey: fileKey,
+    fileName: name, fileMime: mime, fileSize: size, ts: Date.now(),
+    replyToId: rt ? rt.id : null, replyToSender: rt ? rt.sender : null, replyToSnippet: rt ? snippetOf(rt) : null
+  };
+  const { error } = await sb.from("messages").insert({
+    id: msg.id, sender: msg.sender, type: "file", img_key: fileKey, ts: msg.ts,
+    file_name: name, file_mime: mime, file_size: size,
+    reply_to_id: msg.replyToId, reply_to_sender: msg.replyToSender, reply_to_snippet: msg.replyToSnippet
+  });
+  if(error){ console.error("메시지 저장 실패", error); return; }
+  messages.push(msg);
+  clearReplyTarget();
+  renderMessages();
+  markRead();
+}
+
+async function downloadAttachedFile(fileKey, name){
+  let dataUrl = fileCache[fileKey];
+  if(!dataUrl){
+    try{
+      const { data, error } = await sb.from("images").select("data").eq("key", fileKey).single();
+      if(error) throw error;
+      dataUrl = data.data;
+      fileCache[fileKey] = dataUrl;
+    }catch(err){
+      showToast("파일을 불러오지 못했어요.");
+      return;
+    }
+  }
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = name || "file";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 document.getElementById("imgViewer").addEventListener("click", () => {
   document.getElementById("imgViewer").style.display = "none";
 });
@@ -1002,10 +1085,11 @@ async function deleteMessage(id){
   try{ await sb.from("messages").delete().eq("id", id); }
   catch(e){ console.error("메시지 삭제 실패", e); return; }
   messages.splice(idx, 1);
-  if(m.type === "image" && m.imgKey){
+  if((m.type === "image" || m.type === "file") && m.imgKey){
     try{ await sb.from("images").delete().eq("key", m.imgKey); }
     catch(e){ /* 무시 */ }
     delete imageCache[m.imgKey];
+    delete fileCache[m.imgKey];
   }
   renderMessages();
 }
@@ -1065,6 +1149,24 @@ function renderMessages(){
         bubble.textContent = "사진 불러오는 중...";
         fetchImageAndRerender(m.imgKey);
       }
+    } else if(m.type === "file"){
+      bubble.classList.add("fileCard");
+      const icon = document.createElement("span");
+      icon.className = "fileIcon";
+      icon.textContent = "📄";
+      const info = document.createElement("div");
+      info.className = "fileInfo";
+      const nameEl = document.createElement("div");
+      nameEl.className = "fileName";
+      nameEl.textContent = m.fileName || "파일";
+      const sizeEl = document.createElement("div");
+      sizeEl.className = "fileSize";
+      sizeEl.textContent = m.fileSize ? formatFileSize(m.fileSize) + " · 눌러서 다운로드" : "눌러서 다운로드";
+      info.appendChild(nameEl);
+      info.appendChild(sizeEl);
+      bubble.appendChild(icon);
+      bubble.appendChild(info);
+      bubble.onclick = () => downloadAttachedFile(m.imgKey, m.fileName);
     } else {
       bubble.innerHTML = linkifyText(m.text);
     }
