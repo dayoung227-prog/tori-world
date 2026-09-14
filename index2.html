@@ -191,6 +191,17 @@
   #replyPreview .rpWho{font-weight:700;color:var(--moss-dark);}
   #rpCancel{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;}
 
+  #attachPreview{
+    display:none;align-items:center;gap:10px;
+    background:var(--paper);border-top:1px solid var(--line);
+    padding:8px 16px;flex-shrink:0;
+  }
+  #attachPreview.show{display:flex;}
+  #attachPreview .apThumb{width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;}
+  #attachPreview .apIcon{font-size:20px;flex-shrink:0;}
+  #attachPreview .apName{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  #attachPreview #apCancel{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;flex-shrink:0;}
+
   #composer{
     border-top:1px solid var(--line);
     background:#fff;
@@ -205,8 +216,13 @@
   }
   #emojiBtn:hover, #photoBtn:hover{background:#E4EAE8;}
   #photoBtn:disabled{opacity:.5;cursor:default;}
-  .bubble img{
-    max-width:220px;max-height:220px;border-radius:10px;display:block;cursor:pointer;
+  .imgThumbWrap{
+    position:relative;width:180px;height:180px;border-radius:10px;overflow:hidden;cursor:zoom-in;
+  }
+  .imgThumbWrap img{width:100%;height:100%;object-fit:cover;display:block;}
+  .zoomBadge{
+    position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;
+    font-size:11px;padding:3px 7px;border-radius:8px;pointer-events:none;
   }
   .bubble.imgLoading{
     width:150px;height:100px;display:flex;align-items:center;justify-content:center;
@@ -351,6 +367,7 @@
   <div id="layout">
     <div id="chatPane">
       <div id="messages"></div>
+      <div id="attachPreview"></div>
       <div id="replyPreview">
         <div class="rpText"><span class="rpWho"></span>: <span class="rpSnippet"></span></div>
         <button id="rpCancel" type="button">✕</button>
@@ -859,7 +876,7 @@ document.getElementById("imgInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if(!file) return;
-  await handleAttachedFile(file);
+  stageAttachment(file);
 });
 
 function fileToDataUrl(file){
@@ -877,40 +894,55 @@ function formatFileSize(bytes){
   return (bytes/1024/1024).toFixed(1) + "MB";
 }
 
-async function handleAttachedFile(file){
-  const photoBtn = document.getElementById("photoBtn");
-  photoBtn.disabled = true;
-  photoBtn.textContent = "⏳";
-  try{
-    if(file.type && file.type.startsWith("image/")){
-      const dataUrl = await compressImage(file);
-      await sendImageMessage(dataUrl);
-    } else {
-      if(file.size > CONFIG.MAX_FILE_BYTES){
-        showToast("4MB 이하 파일만 보낼 수 있어요.");
-        return;
-      }
-      const dataUrl = await fileToDataUrl(file);
-      await sendFileMessage(dataUrl, file.name, file.type || "application/octet-stream", file.size);
-    }
-  }catch(err){
-    console.error(err);
-    showToast("파일을 보내지 못했어요. 다시 시도해주세요.");
-  }finally{
-    photoBtn.disabled = false;
-    photoBtn.textContent = "📎";
+let pendingAttachment = null; // {file, kind:'image'|'file', previewUrl, name, size}
+
+function stageAttachment(file){
+  const isImage = !!(file.type && file.type.startsWith("image/"));
+  if(!isImage && file.size > CONFIG.MAX_FILE_BYTES){
+    showToast("4MB 이하 파일만 첨부할 수 있어요.");
+    return;
   }
+  if(pendingAttachment && pendingAttachment.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
+  pendingAttachment = {
+    file, kind: isImage ? "image" : "file",
+    previewUrl: isImage ? URL.createObjectURL(file) : null,
+    name: file.name, size: file.size
+  };
+  renderAttachPreview();
+  document.getElementById("msgInput").focus();
 }
 
-// 캡처/복사한 이미지를 입력창에 Ctrl+V로 붙여넣으면 바로 전송
-document.getElementById("msgInput").addEventListener("paste", async (e) => {
+function clearAttachment(){
+  if(pendingAttachment && pendingAttachment.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
+  pendingAttachment = null;
+  renderAttachPreview();
+}
+
+function renderAttachPreview(){
+  const bar = document.getElementById("attachPreview");
+  if(!pendingAttachment){
+    bar.classList.remove("show");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.add("show");
+  if(pendingAttachment.kind === "image"){
+    bar.innerHTML = '<img class="apThumb" src="' + pendingAttachment.previewUrl + '"><span class="apName">사진 첨부됨 — 보내기를 누르면 전송돼요</span><button id="apCancel" type="button">✕</button>';
+  } else {
+    bar.innerHTML = '<span class="apIcon">📄</span><span class="apName">' + esc(pendingAttachment.name) + '</span><button id="apCancel" type="button">✕</button>';
+  }
+  document.getElementById("apCancel").addEventListener("click", clearAttachment);
+}
+
+// 캡처/복사한 이미지를 입력창에 Ctrl+V로 붙여넣으면 미리보기로 첨부됨 (전송은 '보내기' 버튼으로)
+document.getElementById("msgInput").addEventListener("paste", (e) => {
   const items = e.clipboardData && e.clipboardData.items;
   if(!items) return;
   for(const item of items){
     if(item.kind === "file"){
       e.preventDefault();
       const file = item.getAsFile();
-      if(file) await handleAttachedFile(file);
+      if(file) stageAttachment(file);
       return;
     }
   }
@@ -1056,24 +1088,52 @@ document.getElementById("imgViewer").addEventListener("click", () => {
 async function sendMessage(){
   const input = document.getElementById("msgInput");
   const text = input.value.trim();
-  if(!text) return;
-  const rt = replyTarget;
-  const msg = {
-    id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
-    sender: currentUser, type: "text", text: text, ts: Date.now(),
-    replyToId: rt ? rt.id : null, replyToSender: rt ? rt.sender : null, replyToSnippet: rt ? snippetOf(rt) : null
-  };
-  const { error } = await sb.from("messages").insert({
-    id: msg.id, sender: msg.sender, type: "text", text: msg.text, ts: msg.ts,
-    reply_to_id: msg.replyToId, reply_to_sender: msg.replyToSender, reply_to_snippet: msg.replyToSnippet
-  });
-  if(error){ console.error("메시지 저장 실패", error); return; }
-  messages.push(msg);
-  input.value = "";
-  input.style.height = "auto";
-  clearReplyTarget();
-  renderMessages();
-  markRead();
+  if(!pendingAttachment && !text) return;
+
+  const sendBtn = document.getElementById("sendBtn");
+  sendBtn.disabled = true;
+  try{
+    if(pendingAttachment){
+      const att = pendingAttachment;
+      clearAttachment();
+      try{
+        if(att.kind === "image"){
+          const dataUrl = await compressImage(att.file);
+          await sendImageMessage(dataUrl);
+        } else {
+          const dataUrl = await fileToDataUrl(att.file);
+          await sendFileMessage(dataUrl, att.name, att.file.type || "application/octet-stream", att.size);
+        }
+      }catch(err){
+        console.error(err);
+        showToast("파일을 보내지 못했어요. 다시 시도해주세요.");
+      }
+    }
+
+    if(text){
+      const rt = replyTarget;
+      const msg = {
+        id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+        sender: currentUser, type: "text", text: text, ts: Date.now(),
+        replyToId: rt ? rt.id : null, replyToSender: rt ? rt.sender : null, replyToSnippet: rt ? snippetOf(rt) : null
+      };
+      const { error } = await sb.from("messages").insert({
+        id: msg.id, sender: msg.sender, type: "text", text: msg.text, ts: msg.ts,
+        reply_to_id: msg.replyToId, reply_to_sender: msg.replyToSender, reply_to_snippet: msg.replyToSnippet
+      });
+      if(error){ console.error("메시지 저장 실패", error); }
+      else{
+        messages.push(msg);
+        input.value = "";
+        input.style.height = "auto";
+        clearReplyTarget();
+        renderMessages();
+        markRead();
+      }
+    }
+  } finally {
+    sendBtn.disabled = false;
+  }
 }
 
 async function deleteMessage(id){
@@ -1134,13 +1194,21 @@ function renderMessages(){
     if(m.type === "image"){
       const cached = imageCache[m.imgKey];
       if(cached){
+        const wrap = document.createElement("div");
+        wrap.className = "imgThumbWrap";
         const imgEl = document.createElement("img");
         imgEl.src = cached;
-        imgEl.onclick = () => {
+        const badge = document.createElement("span");
+        badge.className = "zoomBadge";
+        badge.textContent = "🔍 확대";
+        wrap.appendChild(imgEl);
+        wrap.appendChild(badge);
+        wrap.onclick = () => {
           document.getElementById("imgViewerImg").src = cached;
           document.getElementById("imgViewer").style.display = "flex";
         };
-        bubble.appendChild(imgEl);
+        bubble.style.padding = "0";
+        bubble.appendChild(wrap);
       } else if(cached === null){
         bubble.classList.add("imgLoading");
         bubble.textContent = "사진을 불러오지 못했어요";
