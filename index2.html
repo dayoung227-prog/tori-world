@@ -489,6 +489,7 @@
         <div class="quizActions">
           <button id="quizNextBtn" type="button">🎲 새 문제 (자동 출제)</button>
           <button id="quizCustomToggle" type="button">✏️ 문제 직접 내기</button>
+          <button id="quizResetBtn" type="button">🔄 게임 리셋 (점수·문제 초기화)</button>
         </div>
 
         <div id="quizCustomForm" style="display:none;">
@@ -1018,10 +1019,20 @@ async function startAutoQuestion(){
   if(quizBusy) return;
   quizBusy = true;
   try{
-    const prev = quiz ? quiz.answer : null;
-    let pick;
-    do { pick = QUIZ_WORDS[Math.floor(Math.random() * QUIZ_WORDS.length)]; }
-    while(QUIZ_WORDS.length > 1 && pick[0] === prev);
+    // 이미 출제된 단어는 DB(id='used_단어')에 기록 → 로그인/기기 상관없이 중복 방지
+    const ur = await sb.from("quiz").select("id").like("id", "used_%");
+    let used = new Set(((ur && ur.data) || []).map(r => r.id.slice(5)));
+    if(quiz) used.add(quiz.answer);
+    let pool = QUIZ_WORDS.filter(w => !used.has(w[0]));
+    if(pool.length === 0){
+      // 전부 소진 → 기록 초기화 후 다시 시작 (방금 문제는 제외)
+      await sb.from("quiz").delete().like("id", "used_%");
+      used = new Set(quiz ? [quiz.answer] : []);
+      pool = QUIZ_WORDS.filter(w => !used.has(w[0]));
+      showToast("모든 문제를 한 번씩 풀었어요! 처음부터 다시 나와요 🎉");
+    }
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    await sb.from("quiz").upsert({ id: "used_" + pick[0], round: 0, answer: pick[0], updated_at: Date.now() });
     await publishQuestion(pick[0], pick[1], null);
     await postSystemMessage("🎲 " + currentUser + "님이 새 초성퀴즈를 시작했어요! (🎮 탭에서 확인)");
     await loadQuiz();
@@ -1148,6 +1159,34 @@ qEl("quizCustomToggle").addEventListener("click", () => {
   f.style.display = (f.style.display === "none") ? "flex" : "none";
 });
 qEl("quizCustomSend").addEventListener("click", sendCustomQuestion);
+
+async function resetGame(){
+  if(quizBusy) return;
+  const ok = await customConfirm("게임을 리셋할까요? 두 사람의 점수가 0점이 되고, 현재 문제와 출제 기록이 모두 초기화돼요.");
+  if(!ok) return;
+  quizBusy = true;
+  try{
+    const r1 = await sb.from("quiz_scores").delete().neq("user_name", "");
+    if(r1.error) throw r1.error;
+    const r2 = await sb.from("quiz").delete().like("id", "used_%");
+    if(r2.error) throw r2.error;
+    const r3 = await sb.from("quiz").update({
+      answer: null, initials: null, category: null, setter: null, solved_by: null,
+      hint_level: 0, updated_at: Date.now()
+    }).eq("id", "current");
+    if(r3.error) throw r3.error;
+    await postSystemMessage("🔄 " + currentUser + "님이 초성퀴즈를 리셋했어요. 점수 0점부터 다시 시작!");
+    await loadQuiz();
+    quizLastSeenRound = quiz ? quiz.round : 0;
+    renderGame();
+    renderMessages();
+    showToast("게임이 리셋됐어요.");
+  }catch(e){
+    console.error(e);
+    showToast("리셋에 실패했어요. 다시 시도해주세요.");
+  }finally{ quizBusy = false; }
+}
+qEl("quizResetBtn").addEventListener("click", resetGame);
 
 /* ---------------- 오래된 메시지/사진 자동 정리 ---------------- */
 async function pruneOldData(){
