@@ -270,6 +270,59 @@
     overflow-y:auto;
     padding:20px;
   }
+  .paneTabs{display:flex;gap:6px;margin-bottom:16px;}
+  .paneTab{
+    flex:1;padding:8px 6px;border-radius:9px;border:1px solid var(--line);background:var(--paper);
+    font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:var(--font);
+  }
+  .paneTab.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+  .paneTab{position:relative;}
+  .paneTab.dot::after{content:"";position:absolute;top:5px;right:8px;width:8px;height:8px;border-radius:50%;background:#e5484d;}
+
+  /* 초성퀴즈 */
+  #scoreBoard{display:flex;gap:8px;margin-bottom:14px;}
+  .scoreCell{
+    flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;
+    background:var(--paper);border:1.5px solid transparent;font-size:12px;
+  }
+  .scoreCell.me{border-color:var(--moss);}
+  .scoreCell .sc{margin-left:auto;font-weight:800;font-size:15px;color:var(--moss-dark);}
+  .quizEmpty{text-align:center;color:var(--muted);font-size:12.5px;line-height:1.7;padding:26px 8px;background:var(--paper);border-radius:12px;}
+  .quizMeta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:8px;}
+  .quizCat{background:#E6F0EC;color:var(--moss-dark);padding:3px 9px;border-radius:12px;font-weight:700;}
+  .quizInitials{
+    text-align:center;font-size:34px;font-weight:800;letter-spacing:6px;color:var(--ink);
+    background:var(--paper);border-radius:14px;padding:22px 8px;margin-bottom:8px;word-break:keep-all;
+  }
+  .quizHintLine{text-align:center;font-size:13px;letter-spacing:4px;color:var(--moss-dark);min-height:18px;margin-bottom:6px;font-weight:700;}
+  .quizSetterNote{text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px;min-height:14px;}
+  .quizInputRow{display:flex;gap:6px;}
+  .quizInputRow input, #quizCustomForm input{
+    flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:13px;
+    font-family:var(--font);outline:none;min-width:0;
+  }
+  #quizCustomForm{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+  .quizInputRow input:focus, #quizCustomForm input:focus{border-color:var(--moss);}
+  #quizSubmit, #quizCustomSend{
+    background:var(--moss);color:#fff;border:none;border-radius:8px;padding:9px 14px;
+    font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--font);
+  }
+  #quizSubmit:hover, #quizCustomSend:hover{background:var(--moss-dark);}
+  .quizSubRow{display:flex;gap:6px;margin-top:6px;}
+  .quizSubRow button, .quizActions button{
+    flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:#fff;
+    font-size:12px;cursor:pointer;color:var(--text);font-family:var(--font);
+  }
+  .quizSubRow button:hover, .quizActions button:hover{background:var(--paper);}
+  .quizActions{display:flex;flex-direction:column;gap:6px;margin-top:12px;}
+  .quizActions #quizNextBtn{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700;padding:10px;}
+  .quizActions #quizNextBtn:hover{background:var(--ink-2);}
+  .quizResult{text-align:center;font-size:13px;line-height:1.6;padding:12px;border-radius:12px;background:#EAF4EE;color:var(--moss-dark);font-weight:600;}
+  .quizResult.giveup{background:var(--paper);color:var(--muted);}
+  .quizRule{margin-top:14px;font-size:10.5px;color:var(--muted);line-height:1.6;}
+  .quizShake{animation:quizShake .35s;}
+  @keyframes quizShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
   .calHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
   .calHead h2{font-size:14.5px;margin:0;font-weight:700;}
   .calNav{display:flex;gap:4px;}
@@ -383,22 +436,68 @@
     </div>
 
     <div id="calPane">
-      <div class="calHead">
-        <h2 id="calMonthLabel"></h2>
-        <div class="calNav">
-          <button id="calPrev">‹</button>
-          <button id="calNext">›</button>
+      <div class="paneTabs">
+        <button type="button" class="paneTab active" data-tab="cal">📅 일정</button>
+        <button type="button" class="paneTab" data-tab="game">🎮 초성퀴즈</button>
+      </div>
+
+      <div id="calView">
+        <div class="calHead">
+          <h2 id="calMonthLabel"></h2>
+          <div class="calNav">
+            <button id="calPrev">‹</button>
+            <button id="calNext">›</button>
+          </div>
+        </div>
+        <div id="calGrid"></div>
+
+        <div id="evtSection">
+          <h3 id="evtDateLabel">일정</h3>
+          <div id="evtList"></div>
+          <div id="evtForm">
+            <input id="evtTitle" type="text" placeholder="일정 제목">
+            <button id="evtAddBtn">이 날짜에 일정 추가</button>
+          </div>
         </div>
       </div>
-      <div id="calGrid"></div>
 
-      <div id="evtSection">
-        <h3 id="evtDateLabel">일정</h3>
-        <div id="evtList"></div>
-        <div id="evtForm">
-          <input id="evtTitle" type="text" placeholder="일정 제목">
-          <button id="evtAddBtn">이 날짜에 일정 추가</button>
+      <div id="gameView" style="display:none;">
+        <div id="scoreBoard"></div>
+
+        <div id="quizEmpty" class="quizEmpty">아직 문제가 없어요.<br>아래 버튼으로 첫 문제를 시작해보세요!</div>
+
+        <div id="quizCard" style="display:none;">
+          <div class="quizMeta"><span id="quizRound"></span><span id="quizCategory" class="quizCat"></span></div>
+          <div id="quizInitials" class="quizInitials"></div>
+          <div id="quizHintLine" class="quizHintLine"></div>
+          <div id="quizSetterNote" class="quizSetterNote"></div>
+
+          <div id="quizAnswerBox">
+            <div class="quizInputRow">
+              <input id="quizGuess" type="text" placeholder="정답을 입력하세요" autocomplete="off">
+              <button id="quizSubmit" type="button">제출</button>
+            </div>
+            <div class="quizSubRow">
+              <button id="quizHintBtn" type="button">💡 힌트</button>
+              <button id="quizGiveUpBtn" type="button">🏳 포기</button>
+            </div>
+          </div>
+
+          <div id="quizResult" class="quizResult" style="display:none;"></div>
         </div>
+
+        <div class="quizActions">
+          <button id="quizNextBtn" type="button">🎲 새 문제 (자동 출제)</button>
+          <button id="quizCustomToggle" type="button">✏️ 문제 직접 내기</button>
+        </div>
+
+        <div id="quizCustomForm" style="display:none;">
+          <input id="quizCustomAnswer" type="text" placeholder="정답 단어 (한글만, 예: 김치찌개)" autocomplete="off">
+          <input id="quizCustomCat" type="text" placeholder="힌트 / 분류 (예: 음식)" autocomplete="off">
+          <button id="quizCustomSend" type="button">상대에게 문제 내기</button>
+        </div>
+
+        <div class="quizRule">정답 3점 · 힌트 쓸 때마다 −1점(최소 1점) · 먼저 맞히면 득점 · 직접 낸 문제는 상대방만 풀 수 있어요</div>
       </div>
     </div>
   </div>
@@ -742,6 +841,9 @@ async function logout(){
     catch(e){ /* 무시 */ }
   }
   if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+  stopGamePoll();
+  switchPaneTab("cal");
+  quiz = null; quizScores = {}; quizLastSeenRound = 0;
   currentUser = null;
   messages = [];
   events = [];
@@ -752,6 +854,300 @@ async function logout(){
   renderCharScreen();
 }
 document.getElementById("logoutBtn").addEventListener("click", logout);
+
+/* ---------------- 초성퀴즈 ---------------- */
+const QUIZ_WORDS = [
+  ["김치찌개","음식"],["떡볶이","음식"],["비빔밥","음식"],["삼겹살","음식"],["불고기","음식"],
+  ["냉면","음식"],["짜장면","음식"],["치킨","음식"],["아이스크림","음식"],["라면","음식"],
+  ["김밥","음식"],["순두부찌개","음식"],["초콜릿","음식"],["마카롱","음식"],["호떡","음식"],
+  ["붕어빵","음식"],["갈비탕","음식"],["샌드위치","음식"],["팥빙수","음식"],["탕후루","음식"],
+  ["코끼리","동물"],["고양이","동물"],["강아지","동물"],["오랑우탄","동물"],["펭귄","동물"],
+  ["기린","동물"],["하마","동물"],["다람쥐","동물"],["호랑이","동물"],["돌고래","동물"],
+  ["앵무새","동물"],["거북이","동물"],
+  ["한강공원","장소"],["제주도","장소"],["놀이공원","장소"],["도서관","장소"],["편의점","장소"],
+  ["지하철","장소"],["경복궁","장소"],["남산타워","장소"],["해운대","장소"],["영화관","장소"],
+  ["월요일","회사 생활"],["퇴근","회사 생활"],["점심시간","회사 생활"],["출장","회사 생활"],["회식","회사 생활"],
+  ["연차휴가","회사 생활"],["월급날","회사 생활"],["보고서","회사 생활"],["회의실","회사 생활"],["아메리카노","회사 생활"],
+  ["야근","회사 생활"],["엑셀","회사 생활"],["결재","회사 생활"],
+  ["냉장고","물건"],["세탁기","물건"],["텔레비전","물건"],["스마트폰","물건"],["우산","물건"],
+  ["선풍기","물건"],["노트북","물건"],["에어컨","물건"],["이어폰","물건"],["보조배터리","물건"],
+  ["축구","취미·스포츠"],["야구","취미·스포츠"],["농구","취미·스포츠"],["수영","취미·스포츠"],["등산","취미·스포츠"],
+  ["볼링","취미·스포츠"],["캠핑","취미·스포츠"],["독서","취미·스포츠"],["배드민턴","취미·스포츠"],["노래방","취미·스포츠"],
+  ["보드게임","취미·스포츠"]
+];
+const CHO = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const GIVEUP_MARK = "__giveup__";
+
+function getInitials(word){
+  return Array.from(word).map(ch => {
+    const code = ch.charCodeAt(0) - 0xAC00;
+    if(code < 0 || code > 11171) return ch;
+    return CHO[Math.floor(code / 588)];
+  }).join("");
+}
+function normalizeAnswer(s){ return (s || "").replace(/\s+/g, "").toLowerCase(); }
+function isHangulWord(s){ return /^[가-힣]+$/.test(s); }
+function qEl(id){ return document.getElementById(id); }
+
+let quiz = null; // {round, answer, initials, category, setter, solvedBy, hintLevel}
+let quizScores = {};
+let gameTabActive = false;
+let gamePollTimer = null;
+let quizLastSeenRound = 0;
+let quizBusy = false;
+
+async function loadQuiz(){
+  try{
+    const [q, s] = await Promise.all([
+      sb.from("quiz").select("*").eq("id", "current").maybeSingle(),
+      sb.from("quiz_scores").select("*")
+    ]);
+    if(q.error) throw q.error;
+    const row = q.data;
+    quiz = (row && row.answer) ? {
+      round: Number(row.round), answer: row.answer, initials: row.initials,
+      category: row.category || "", setter: row.setter || null,
+      solvedBy: row.solved_by || null, hintLevel: Number(row.hint_level || 0)
+    } : null;
+    quizScores = {};
+    ((s && s.data) || []).forEach(r => { quizScores[r.user_name] = Number(r.score); });
+  }catch(e){ console.error("퀴즈 불러오기 실패", e); }
+}
+
+function updateQuizDot(){
+  const tab = document.querySelector('.paneTab[data-tab="game"]');
+  if(!tab) return;
+  const isNew = quiz && quiz.round !== quizLastSeenRound && !quiz.solvedBy && quiz.setter !== currentUser;
+  tab.classList.toggle("dot", !!isNew && !gameTabActive);
+}
+
+function renderGame(){
+  if(!currentUser) return;
+  // 점수판
+  qEl("scoreBoard").innerHTML = CONFIG.CHARACTERS.map(c =>
+    '<div class="scoreCell' + (c.name === currentUser ? ' me' : '') + '">' + iconHtml(c, 20)
+    + '<span>' + esc(c.name) + '</span><span class="sc">' + (quizScores[c.name] || 0) + '</span></div>'
+  ).join("");
+
+  const hasQuiz = !!quiz;
+  qEl("quizEmpty").style.display = hasQuiz ? "none" : "block";
+  qEl("quizCard").style.display = hasQuiz ? "block" : "none";
+  if(!hasQuiz) return;
+
+  const letters = Array.from(quiz.answer);
+  qEl("quizRound").textContent = "제 " + quiz.round + " 라운드";
+  const catEl = qEl("quizCategory");
+  catEl.textContent = quiz.category || "분류 없음";
+  qEl("quizInitials").textContent = quiz.initials;
+
+  const hintLine = quiz.hintLevel > 0
+    ? letters.map((c, i) => i < quiz.hintLevel ? c : "○").join(" ")
+    : "";
+  qEl("quizHintLine").textContent = (!quiz.solvedBy && hintLine) ? hintLine : "";
+
+  const isSetter = quiz.setter === currentUser;
+  qEl("quizSetterNote").textContent = quiz.setter
+    ? (isSetter ? "내가 낸 문제예요 — 상대방이 푸는 중!" : quiz.setter + "님이 낸 문제")
+    : "";
+
+  const solved = !!quiz.solvedBy;
+  qEl("quizAnswerBox").style.display = (!solved && !isSetter) ? "block" : "none";
+
+  const maxHint = Math.min(2, letters.length - 1);
+  const hintBtn = qEl("quizHintBtn");
+  hintBtn.disabled = quiz.hintLevel >= maxHint;
+  hintBtn.textContent = quiz.hintLevel >= maxHint ? "💡 힌트 소진" : "💡 힌트 (−1점)";
+
+  const resultEl = qEl("quizResult");
+  if(solved){
+    resultEl.style.display = "block";
+    if(quiz.solvedBy === GIVEUP_MARK){
+      resultEl.className = "quizResult giveup";
+      resultEl.textContent = "🏳 포기! 정답은 「" + quiz.answer + "」";
+    } else {
+      const pts = Math.max(1, 3 - quiz.hintLevel);
+      resultEl.className = "quizResult";
+      resultEl.textContent = "🎉 " + quiz.solvedBy + "님 정답! 「" + quiz.answer + "」 (+" + pts + "점)";
+    }
+  } else {
+    resultEl.style.display = "none";
+  }
+  qEl("quizNextBtn").textContent = solved ? "🎲 다음 문제 (자동 출제)" : "🎲 새 문제 (자동 출제)";
+}
+
+function switchPaneTab(tab){
+  gameTabActive = (tab === "game");
+  document.querySelectorAll(".paneTab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  qEl("calView").style.display = gameTabActive ? "none" : "";
+  qEl("gameView").style.display = gameTabActive ? "" : "none";
+  if(gameTabActive){
+    loadQuiz().then(() => {
+      quizLastSeenRound = quiz ? quiz.round : 0;
+      updateQuizDot();
+      renderGame();
+    });
+    startGamePoll();
+  } else {
+    stopGamePoll();
+  }
+}
+function startGamePoll(){
+  if(gamePollTimer) return;
+  gamePollTimer = setInterval(async () => {
+    if(!currentUser || quizBusy) return;
+    await loadQuiz();
+    quizLastSeenRound = quiz ? quiz.round : 0;
+    renderGame();
+  }, 2000);
+}
+function stopGamePoll(){
+  if(gamePollTimer){ clearInterval(gamePollTimer); gamePollTimer = null; }
+}
+
+async function publishQuestion(answer, category, setter){
+  const cur = await sb.from("quiz").select("round").eq("id", "current").maybeSingle();
+  const base = (cur && cur.data) ? Number(cur.data.round) : 0;
+  const { error } = await sb.from("quiz").upsert({
+    id: "current", round: base + 1, answer: answer, initials: getInitials(answer),
+    category: category || "", setter: setter, solved_by: null, hint_level: 0, updated_at: Date.now()
+  });
+  if(error) throw error;
+}
+
+async function startAutoQuestion(){
+  if(quizBusy) return;
+  quizBusy = true;
+  try{
+    const prev = quiz ? quiz.answer : null;
+    let pick;
+    do { pick = QUIZ_WORDS[Math.floor(Math.random() * QUIZ_WORDS.length)]; }
+    while(QUIZ_WORDS.length > 1 && pick[0] === prev);
+    await publishQuestion(pick[0], pick[1], null);
+    await postSystemMessage("🎲 " + currentUser + "님이 새 초성퀴즈를 시작했어요! (🎮 탭에서 확인)");
+    await loadQuiz();
+    quizLastSeenRound = quiz ? quiz.round : 0;
+    qEl("quizGuess").value = "";
+    renderGame();
+    renderMessages();
+  }catch(e){
+    console.error(e);
+    showToast("문제를 만들지 못했어요. Supabase에 퀴즈 테이블이 만들어졌는지 확인해주세요.");
+  }finally{ quizBusy = false; }
+}
+
+async function sendCustomQuestion(){
+  if(quizBusy) return;
+  const answer = normalizeAnswer(qEl("quizCustomAnswer").value);
+  const cat = qEl("quizCustomCat").value.trim().slice(0, 12);
+  if(!isHangulWord(answer) || answer.length < 2 || answer.length > 10){
+    showToast("정답은 한글 2~10자로 입력해주세요. (공백 제외)");
+    return;
+  }
+  quizBusy = true;
+  try{
+    await publishQuestion(answer, cat, currentUser);
+    await postSystemMessage("✏️ " + currentUser + "님이 초성퀴즈를 냈어요! 🎮 탭에서 풀어보세요.");
+    qEl("quizCustomAnswer").value = "";
+    qEl("quizCustomCat").value = "";
+    qEl("quizCustomForm").style.display = "none";
+    await loadQuiz();
+    quizLastSeenRound = quiz ? quiz.round : 0;
+    renderGame();
+    renderMessages();
+    showToast("문제를 냈어요! 상대방이 풀 때까지 기다려주세요.");
+  }catch(e){
+    console.error(e);
+    showToast("문제를 내지 못했어요. 다시 시도해주세요.");
+  }finally{ quizBusy = false; }
+}
+
+async function submitGuess(){
+  if(quizBusy || !quiz || quiz.solvedBy || quiz.setter === currentUser) return;
+  const input = qEl("quizGuess");
+  const guess = normalizeAnswer(input.value);
+  if(!guess) return;
+  if(guess !== normalizeAnswer(quiz.answer)){
+    input.classList.remove("quizShake");
+    void input.offsetWidth;
+    input.classList.add("quizShake");
+    showToast("땡! 다시 도전해보세요 🙈");
+    return;
+  }
+  quizBusy = true;
+  try{
+    const answer = quiz.answer;
+    const { data, error } = await sb.from("quiz")
+      .update({ solved_by: currentUser, updated_at: Date.now() })
+      .eq("id", "current").eq("round", quiz.round).is("solved_by", null).select();
+    if(error) throw error;
+    input.value = "";
+    if(!data || data.length === 0){
+      showToast("앗, 상대방이 먼저 맞혔어요!");
+    } else {
+      const pts = Math.max(1, 3 - Number(data[0].hint_level || 0));
+      quizScores[currentUser] = (quizScores[currentUser] || 0) + pts;
+      await sb.from("quiz_scores").upsert({ user_name: currentUser, score: quizScores[currentUser] });
+      await postSystemMessage("🎮 " + currentUser + "님이 초성퀴즈 정답! 「" + answer + "」 (+" + pts + "점)");
+      renderMessages();
+    }
+    await loadQuiz();
+    renderGame();
+  }catch(e){
+    console.error(e);
+    showToast("제출에 실패했어요. 다시 시도해주세요.");
+  }finally{ quizBusy = false; }
+}
+
+async function useHint(){
+  if(quizBusy || !quiz || quiz.solvedBy || quiz.setter === currentUser) return;
+  const maxHint = Math.min(2, Array.from(quiz.answer).length - 1);
+  if(quiz.hintLevel >= maxHint) return;
+  quizBusy = true;
+  try{
+    const { error } = await sb.from("quiz")
+      .update({ hint_level: quiz.hintLevel + 1, updated_at: Date.now() })
+      .eq("id", "current").eq("round", quiz.round).eq("hint_level", quiz.hintLevel).is("solved_by", null);
+    if(error) throw error;
+    await loadQuiz();
+    renderGame();
+  }catch(e){
+    console.error(e);
+    showToast("힌트를 가져오지 못했어요.");
+  }finally{ quizBusy = false; }
+}
+
+async function giveUpQuiz(){
+  if(quizBusy || !quiz || quiz.solvedBy || quiz.setter === currentUser) return;
+  quizBusy = true;
+  try{
+    const answer = quiz.answer;
+    const { data, error } = await sb.from("quiz")
+      .update({ solved_by: GIVEUP_MARK, updated_at: Date.now() })
+      .eq("id", "current").eq("round", quiz.round).is("solved_by", null).select();
+    if(error) throw error;
+    if(data && data.length > 0){
+      await postSystemMessage("🏳 " + currentUser + "님이 포기! 정답은 「" + answer + "」였어요.");
+      renderMessages();
+    }
+    await loadQuiz();
+    renderGame();
+  }catch(e){
+    console.error(e);
+    showToast("처리하지 못했어요. 다시 시도해주세요.");
+  }finally{ quizBusy = false; }
+}
+
+document.querySelectorAll(".paneTab").forEach(b => b.addEventListener("click", () => switchPaneTab(b.dataset.tab)));
+qEl("quizSubmit").addEventListener("click", submitGuess);
+qEl("quizGuess").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); submitGuess(); } });
+qEl("quizHintBtn").addEventListener("click", useHint);
+qEl("quizGiveUpBtn").addEventListener("click", giveUpQuiz);
+qEl("quizNextBtn").addEventListener("click", startAutoQuestion);
+qEl("quizCustomToggle").addEventListener("click", () => {
+  const f = qEl("quizCustomForm");
+  f.style.display = (f.style.display === "none") ? "flex" : "none";
+});
+qEl("quizCustomSend").addEventListener("click", sendCustomQuestion);
 
 /* ---------------- 오래된 메시지/사진 자동 정리 ---------------- */
 async function pruneOldData(){
@@ -853,6 +1249,7 @@ async function pollLoop(){
   renderCalendar();
   renderPresenceLabel();
   markRead();
+  if(!gameTabActive){ await loadQuiz(); updateQuizDot(); }
 }
 
 /* ---------------- 메시지 ---------------- */
